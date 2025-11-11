@@ -37,7 +37,13 @@ func RunChild(args []string) error {
 	// 5. Exec the new command
 	// syscall.Exec replaces this child process with the user's command
 	// The path would be relative to the *new* rootfs now
-	if err := syscall.Exec(command, cmdArgs, os.Environ()); err != nil {
+	// IMPORTANT: argv[0] must be the command itself for programs like BusyBox to work
+	argv := append([]string{command}, cmdArgs...)
+
+	// Debug: print what we're about to exec
+	fmt.Printf("[DEBUG] About to exec: command=%s, argv=%v\n", command, argv)
+
+	if err := syscall.Exec(command, argv, os.Environ()); err != nil {
 		return fmt.Errorf("Error execing: %v", err)
 	}
 
