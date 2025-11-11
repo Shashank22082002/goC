@@ -5,7 +5,9 @@ package container
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
@@ -22,6 +24,12 @@ func setupFileSystem(rootfs string) error {
 	// 2. Bind mount the new rootfs to itself
 	if err := syscall.Mount(rootfs, rootfs, "", syscall.MS_BIND|syscall.MS_REC, ""); err != nil {
 		return fmt.Errorf("failed to bind mount rootfs: %v", err)
+	}
+
+	// 2.5. Copy host's DNS settings
+	if err := copyResolvConf(rootfs); err != nil {
+		// We can warn, but shouldn't fail the whole container
+		fmt.Printf("[Container] Warning: failed to copy resolv.conf: %v\n", err)
 	}
 
 	// 3. Create a directory for the old root
@@ -77,6 +85,38 @@ func setupFileSystem(rootfs string) error {
 	}
 	if err := os.RemoveAll("/" + oldRoot); err != nil {
 		// fmt.Printf("Warning: failed to remove old_root dir: %v\n", err)
+	}
+
+	return nil
+}
+
+// copyResolvConf copies the host's /etc/resolv.conf into the new rootfs
+func copyResolvConf(rootfs string) error {
+	hostResolvFile := "/etc/resolv.conf"
+	contResolvFile := filepath.Join(rootfs, "etc", "resolv.conf")
+
+	// Ensure /etc directory exists (it should, but just in case)
+	if err := os.MkdirAll(filepath.Dir(contResolvFile), 0755); err != nil {
+		return fmt.Errorf("failed to create /etc dir in rootfs: %v", err)
+	}
+
+	// Open host file
+	src, err := os.Open(hostResolvFile)
+	if err != nil {
+		return fmt.Errorf("failed to open host resolv.conf: %v", err)
+	}
+	defer src.Close()
+
+	// Create container file
+	dst, err := os.Create(contResolvFile)
+	if err != nil {
+		return fmt.Errorf("failed to create container resolv.conf: %v", err)
+	}
+	defer dst.Close()
+
+	// Copy content
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy resolv.conf: %v", err)
 	}
 
 	return nil
