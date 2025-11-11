@@ -5,7 +5,6 @@ package container
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -91,8 +90,7 @@ func setupFileSystem(rootfs string) error {
 }
 
 // copyResolvConf copies the host's /etc/resolv.conf into the new rootfs
-func copyResolvConf(rootfs string) error {
-	hostResolvFile := "/etc/resolv.conf"
+func createResolvConf(rootfs string) error {
 	contResolvFile := filepath.Join(rootfs, "etc", "resolv.conf")
 
 	// Ensure /etc directory exists (it should, but just in case)
@@ -100,23 +98,13 @@ func copyResolvConf(rootfs string) error {
 		return fmt.Errorf("failed to create /etc dir in rootfs: %v", err)
 	}
 
-	// Open host file
-	src, err := os.Open(hostResolvFile)
-	if err != nil {
-		return fmt.Errorf("failed to open host resolv.conf: %v", err)
-	}
-	defer src.Close()
+	// Create the content for the file
+	// We use 8.8.8.8 (Google) and 1.1.1.1 (Cloudflare) as public DNS servers
+	content := []byte("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
 
-	// Create container file
-	dst, err := os.Create(contResolvFile)
-	if err != nil {
-		return fmt.Errorf("failed to create container resolv.conf: %v", err)
-	}
-	defer dst.Close()
-
-	// Copy content
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("failed to copy resolv.conf: %v", err)
+	// Write the file
+	if err := os.WriteFile(contResolvFile, content, 0644); err != nil {
+		return fmt.Errorf("failed to write container resolv.conf: %v", err)
 	}
 
 	return nil
