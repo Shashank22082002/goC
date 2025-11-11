@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+
+	"goC/internal/network"
 )
 
 func RunChild(args []string) error {
@@ -32,6 +34,17 @@ func RunChild(args []string) error {
 	// 4. Setup the filesystem
 	if err := setupFileSystem(rootfs); err != nil {
 		return fmt.Errorf("Error setting up filesystem: %v", err)
+	}
+
+	// 6. Setup Container-side network
+	peerName := os.Getenv("GOC_PEER_NAME")
+	if peerName == "" {
+		// Log the error, but don't fail. Container just won't have a network.
+		fmt.Printf("[Container] GOC_PEER_NAME env var not set, skipping network setup.\n")
+	} else {
+		if err := network.SetupContainerSide(peerName); err != nil {
+			return fmt.Errorf("error setting up container network: %v", err)
+		}
 	}
 
 	// 5. Exec the new command

@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 
 	"goC/internal/cgroups"
+	"goC/internal/network"
 )
 
 const cgroupName = "goC-test-1"
@@ -32,7 +34,8 @@ func RunParent(args []string) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: unix.CLONE_NEWPID | // New PID namespace
 			unix.CLONE_NEWNS | // New Mount namespace
-			unix.CLONE_NEWUTS, // New Hostname namespace
+			unix.CLONE_NEWUTS | // New Hostname namespace
+			unix.CLONE_NEWNET, // New Network namespace
 	}
 
 	// 4. Connect Stdin/Stdout/Stderr
@@ -43,26 +46,37 @@ func RunParent(args []string) error {
 	// 5. Set the "secret handshake"
 	cmd.Env = append(os.Environ(), "GOC_INTERNAL_REEXEC=true")
 
-	// 6. Setup cgroups
+	// 6. Create a unique veth name
+	vethName := "veth" + strconv.Itoa(os.Getpid())
+	peerName := "c" + vethName // "c" for container, We use parent PID for simplicity
+	cmd.Env = append(cmd.Env, "GOC_PEER_NAME="+peerName)
+
+	// 7. Setup cgroups
 	cgroupPath, err := cgroups.Setup(cgroupName, memoryLimitMB)
 	if err != nil {
 		return fmt.Errorf("Error setting up cgroups: %v", err)
 	}
 	defer cgroups.Cleanup(cgroupPath)
 
-	// 6. Run the command
+	// 8. Run the command
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("Error running child: %v", err)
 	}
 
 	pid := cmd.Process.Pid
 
-	// 7. Add the container process to the cgroup
+	// 9. Setup the network
+	if err := network.SetupHostSide(pid, vethName, peerName); err != nil {
+		// We log the error but don't fail; container will just have no network
+		fmt.Printf("[Host] Error setting up host network: %v\n", err)
+	}
+
+	// 10. Add the container process to the cgroup
 	if err := cgroups.AddProcess(cgroupPath, pid); err != nil {
 		return fmt.Errorf("Error adding process to cgroup: %v", err)
 	}
 
-	// 8. Wait for the child to exit
+	// 11. Wait for the child to exit
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("Error waiting for child: %v", err)
 	}
