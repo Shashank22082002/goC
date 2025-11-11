@@ -26,11 +26,21 @@ func RunParent(args []string) error {
 		return fmt.Errorf("Must provide a rootfs and a command")
 	}
 
-	// 2. We call the "runChild" now
+	// 2. Create a pipe for synchronization
+	// The child will block reading from this pipe until we close it
+	// This ensures the child waits for us to finish network setup
+	r, w, err := os.Pipe()
+	if err != nil {
+		return fmt.Errorf("failed to create pipe: %v", err)
+	}
+	defer r.Close() // Parent doesn't need the read end
+	defer w.Close() // Ensure write end is closed even if we error out
+
+	// 3. We call the "runChild" now
 	// /proc/self/exe is a magic link to our *own* binary
 	cmd := exec.Command("/proc/self/exe", append([]string{"runChild"}, args...)...)
 
-	// 3. Setup flags
+	// 4. Setup flags
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: unix.CLONE_NEWPID | // New PID namespace
 			unix.CLONE_NEWNS | // New Mount namespace
@@ -38,15 +48,19 @@ func RunParent(args []string) error {
 			unix.CLONE_NEWNET, // New Network namespace
 	}
 
-	// 4. Connect Stdin/Stdout/Stderr
+	// 5. Connect Stdin/Stdout/Stderr
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// 5. Set the "secret handshake"
+	// 6. Pass the read end of the pipe to the child as ExtraFiles
+	// It will appear as file descriptor 3 in the child process
+	cmd.ExtraFiles = []*os.File{r}
+
+	// 7. Set the "secret handshake"
 	cmd.Env = append(os.Environ(), "GOC_INTERNAL_REEXEC=true")
 
-	// 6. Create a unique veth name
+	// 8. Create a unique veth name
 	vethName := "veth" + strconv.Itoa(os.Getpid())
 	peerName := "c" + vethName // "c" for container, We use parent PID for simplicity
 	cmd.Env = append(cmd.Env, "GOC_PEER_NAME="+peerName)
@@ -71,7 +85,11 @@ func RunParent(args []string) error {
 		fmt.Printf("[Host] Error setting up host network: %v\n", err)
 	}
 
-	// 10. Add the container process to the cgroup
+	// 10. Signal the child that network setup is complete
+	// Close the write end of the pipe - this unblocks the child's read
+	w.Close()
+
+	// 11. Add the container process to the cgroup
 	if err := cgroups.AddProcess(cgroupPath, pid); err != nil {
 		return fmt.Errorf("Error adding process to cgroup: %v", err)
 	}

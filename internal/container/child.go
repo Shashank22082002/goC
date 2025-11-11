@@ -36,6 +36,17 @@ func RunChild(args []string) error {
 		return fmt.Errorf("Error setting up filesystem: %v", err)
 	}
 
+	// 5. Wait for parent to finish network setup
+	// The parent passed us a pipe as file descriptor 3 (via ExtraFiles)
+	// We block here until the parent closes the write end
+	syncPipe := os.NewFile(3, "sync-pipe")
+	if syncPipe != nil {
+		buf := make([]byte, 1)
+		// This read will block until the parent closes the pipe (returns EOF)
+		syncPipe.Read(buf)
+		syncPipe.Close()
+	}
+
 	// 6. Setup Container-side network
 	peerName := os.Getenv("GOC_PEER_NAME")
 	if peerName == "" {
