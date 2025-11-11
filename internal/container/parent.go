@@ -10,7 +10,12 @@ import (
 	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"goC/internal/cgroups"
 )
+
+const cgroupName = "goC-test-1"
+const memoryLimitMB = 100
 
 func RunParent(args []string) error {
 
@@ -38,9 +43,28 @@ func RunParent(args []string) error {
 	// 5. Set the "secret handshake"
 	cmd.Env = append(os.Environ(), "GOC_INTERNAL_REEXEC=true")
 
+	// 6. Setup cgroups
+	cgroupPath, err := cgroups.Setup(cgroupName, memoryLimitMB)
+	if err != nil {
+		return fmt.Errorf("Error setting up cgroups: %v", err)
+	}
+	defer cgroups.Cleanup(cgroupPath)
+
 	// 6. Run the command
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("Error running child: %v", err)
+	}
+
+	pid := cmd.Process.Pid
+
+	// 7. Add the container process to the cgroup
+	if err := cgroups.AddProcess(cgroupPath, pid); err != nil {
+		return fmt.Errorf("Error adding process to cgroup: %v", err)
+	}
+
+	// 8. Wait for the child to exit
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("Error waiting for child: %v", err)
 	}
 
 	return nil
