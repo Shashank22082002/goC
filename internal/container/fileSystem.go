@@ -26,7 +26,7 @@ func setupFileSystem(rootfs string) error {
 	}
 
 	// 2.5. Copy host's DNS settings
-	if err := copyResolvConf(rootfs); err != nil {
+	if err := createResolvConf(rootfs); err != nil {
 		// We can warn, but shouldn't fail the whole container
 		fmt.Printf("[Container] Warning: failed to copy resolv.conf: %v\n", err)
 	}
@@ -89,7 +89,7 @@ func setupFileSystem(rootfs string) error {
 	return nil
 }
 
-// copyResolvConf copies the host's /etc/resolv.conf into the new rootfs
+// createResolvConf writes a static /etc/resolv.conf with public DNS
 func createResolvConf(rootfs string) error {
 	contResolvFile := filepath.Join(rootfs, "etc", "resolv.conf")
 
