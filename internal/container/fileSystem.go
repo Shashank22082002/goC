@@ -11,7 +11,7 @@ import (
 
 // setupFilesystem runs inside the new mount namespace.
 // It pivots the root filesystem to the new rootfs.
-func setupFilesystem(rootfs string) error {
+func setupFileSystem(rootfs string) error {
 	const oldRoot = "old_root"
 
 	// 1. Make root private
