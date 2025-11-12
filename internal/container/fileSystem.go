@@ -31,6 +31,19 @@ func setupFileSystem(rootfs string) error {
 		fmt.Printf("[Container] Warning: failed to copy resolv.conf: %v\n", err)
 	}
 
+	// 2.7. **THE FIX**: Bind mount the cgroup filesystem
+	// We must do this *before* pivot_root to graft the host's
+	// cgroup tree into our new rootfs.
+	cgroupDest := filepath.Join(rootfs, "sys/fs/cgroup")
+	if err := os.MkdirAll(cgroupDest, 0755); err != nil {
+		return fmt.Errorf("failed to create cgroup dir in rootfs: %v", err)
+	}
+	// We mount it read-only for security.
+	if err := syscall.Mount("/sys/fs/cgroup", cgroupDest, "", syscall.MS_BIND|syscall.MS_RDONLY, ""); err != nil {
+		return fmt.Errorf("failed to bind mount cgroupfs: %v", err)
+	}
+
+
 	// 3. Create a directory for the old root
 	oldRootPath := rootfs + "/" + oldRoot
 	if err := os.MkdirAll(oldRootPath, 0700); err != nil {
@@ -60,13 +73,6 @@ func setupFileSystem(rootfs string) error {
 	// Many modern tools need this.
 	if err := syscall.Mount("sysfs", "/sys", "sysfs", 0, ""); err != nil {
 		return fmt.Errorf("failed to mount /sys: %v", err)
-	}
-
-	// 7.5 NEW: Mount /sys/fs/cgroup
-	// `cgroup2` is a virtual filesystem that provides cgroup information.
-	// This is a separate mount point than sys
-	if err := syscall.Mount("cgroup2", "/sys/fs/cgroup", "cgroup2", 0, ""); err != nil {
-		return fmt.Errorf("failed to mount /sys/fs/cgroup: %v", err)
 	}
 
 	// 8. NEW: Mount /dev
