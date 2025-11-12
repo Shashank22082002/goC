@@ -49,6 +49,14 @@ func Setup(cgroupName string, memoryLimitMB int) (string, error) {
 		return "", fmt.Errorf("failed to write memory.max: %v", err)
 	}
 
+	// 5. **THE FIX**: Disable Swap for the "worker" cgroup
+	// This forces the kernel to kill the process (OOM)
+	// instead of paging it to disk (swapping).
+	swapLimitFile := filepath.Join(cgroupPath, "memory.swap.max")
+	if err := os.WriteFile(swapLimitFile, []byte("0"), 0644); err != nil {
+		return "", fmt.Errorf("failed to write memory.swap.max: %v", err)
+	}
+
 	return cgroupPath, nil
 }
 
