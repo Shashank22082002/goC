@@ -80,10 +80,10 @@ func setupFileSystem(rootfs string) error {
 	if err := syscall.Unmount("/"+oldRoot, syscall.MNT_DETACH); err != nil {
 		// This may fail if the host's root is busy, but it's not critical
 		// for the container to run. We can log it but not fail.
-		// fmt.Printf("Warning: failed to unmount old_root: %v\n", err)
+		fmt.Printf("Warning: failed to unmount old_root: %v\n", err)
 	}
 	if err := os.RemoveAll("/" + oldRoot); err != nil {
-		// fmt.Printf("Warning: failed to remove old_root dir: %v\n", err)
+		fmt.Printf("Warning: failed to remove old_root dir: %v\n", err)
 	}
 
 	return nil
