@@ -31,19 +31,6 @@ func setupFileSystem(rootfs string) error {
 		fmt.Printf("[Container] Warning: failed to copy resolv.conf: %v\n", err)
 	}
 
-	// 2.7. **THE FIX**: Bind mount the cgroup filesystem
-	// We must do this *before* pivot_root to graft the host's
-	// cgroup tree into our new rootfs.
-	cgroupDest := filepath.Join(rootfs, "sys/fs/cgroup")
-	if err := os.MkdirAll(cgroupDest, 0755); err != nil {
-		return fmt.Errorf("failed to create cgroup dir in rootfs: %v", err)
-	}
-	// We mount it read-only for security.
-	if err := syscall.Mount("/sys/fs/cgroup", cgroupDest, "", syscall.MS_BIND|syscall.MS_RDONLY, ""); err != nil {
-		return fmt.Errorf("failed to bind mount cgroupfs: %v", err)
-	}
-
-
 	// 3. Create a directory for the old root
 	oldRootPath := rootfs + "/" + oldRoot
 	if err := os.MkdirAll(oldRootPath, 0700); err != nil {
@@ -82,6 +69,31 @@ func setupFileSystem(rootfs string) error {
 	if err := syscall.Mount("devtmpfs", "/dev", "devtmpfs", 0, ""); err != nil {
 		return fmt.Errorf("failed to mount /dev: %v", err)
 	}
+
+	// 8.5. **THE FIX**: Bind-mount the cgroupfs
+	// Now that /sys is mounted, we bind-mount the *host's*
+	// cgroupfs on top of our new (empty) /sys/fs/cgroup.
+	// We must use the oldRootPath to "find" the host's cgroupfs.
+	//
+	// This is a subtle but critical part.
+	// The host's cgroupfs is at "/sys/fs/cgroup".
+	// *After* pivot_root, the *host's* root is at "/old_root".
+	// Therefore, the host's cgroupfs is now at "/old_root/sys/fs/cgroup".
+
+	// We must mount it from the old_root path
+	hostCgroupPath := filepath.Join("/", oldRoot, "sys/fs/cgroup")
+
+	// We must ensure the destination exists *inside* our new /sys
+	containerCgroupPath := "/sys/fs/cgroup"
+	if err := os.MkdirAll(containerCgroupPath, 0755); err != nil {
+		return fmt.Errorf("failed to create /sys/fs/cgroup dir: %v", err)
+	}
+
+	// Bind mount the host's cgroupfs to the container's cgroupfs (read-only)
+	if err := syscall.Mount(hostCgroupPath, containerCgroupPath, "", syscall.MS_BIND|syscall.MS_RDONLY, ""); err != nil {
+		return fmt.Errorf("failed to bind mount cgroupfs from %s: %v", hostCgroupPath, err)
+	}
+
 	// ---
 	// A more "correct" runtime would mount an empty "tmpfs"
 	// and then create the minimal devices (null, tty, zero)
