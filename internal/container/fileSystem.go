@@ -62,6 +62,13 @@ func setupFileSystem(rootfs string) error {
 		return fmt.Errorf("failed to mount /sys: %v", err)
 	}
 
+	// 7.5 NEW: Mount /sys/fs/cgroup
+	// `cgroup2` is a virtual filesystem that provides cgroup information.
+	// This is a separate mount point than sys
+	if err := syscall.Mount("cgroup2", "/sys/fs/cgroup", "cgroup2", 0, ""); err != nil {
+		return fmt.Errorf("failed to mount /sys/fs/cgroup: %v", err)
+	}
+
 	// 8. NEW: Mount /dev
 	// `devtmpfs` is a virtual filesystem that provides device nodes.
 	// This is CRITICAL for /dev/null, /dev/tty, /dev/stdin, etc.
