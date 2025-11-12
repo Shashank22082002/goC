@@ -18,15 +18,17 @@ const cgroupRoot = "/sys/fs/cgroup"
 func Setup(cgroupName string, memoryLimitMB int) (string, error) {
 	// Create our cgroup directory: /sys/fs/cgroup/goC/cgroupName
 	cgroupPath := filepath.Join(cgroupRoot, "goC", cgroupName)
-	if err := os.MkdirAll(cgroupPath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create cgroup dir: %v", err)
+	parentPath := filepath.Dir(cgroupPath) // /sys/fs/cgroup/goC
+
+	// 1. Create the parent /goC directory
+	if err := os.MkdirAll(parentPath, 0755); err != nil {
+		return "", fmt.Errorf("failed to create parent cgroup dir: %v", err)
 	}
 
-	// 1. Enable the "memory" controller for this cgroup
+	// 2. Enable the "memory" controller for this cgroup
 	// We must write "+memory" to cgroup.subtree_control
 	// This "activates" the memory controller for all sub-cgroups.
 	// We do this on the *parent* /sys/fs/cgroup/goC directory.
-	parentPath := filepath.Dir(cgroupPath)
 	controlFile := filepath.Join(parentPath, "cgroup.subtree_control")
 	if err := os.WriteFile(controlFile, []byte("+memory"), 0644); err != nil {
 		// This might fail if it's already enabled, which is often fine.
@@ -34,7 +36,21 @@ func Setup(cgroupName string, memoryLimitMB int) (string, error) {
 		fmt.Printf("Note: failed to enable memory controller (may be ok): %v\n", err)
 	}
 
-	// 2. Set the memory limit
+	// 3. **THE FIX **: *Now* "claim" the parent cgroup.
+	// This is a v2 "delegation" requirement.
+	// We add our *own* PID (0) to the parent's procs file.
+	pidFile := filepath.Join(parentPath, "cgroup.procs")
+	if err := os.WriteFile(pidFile, []byte("0"), 0644); err != nil {
+		// This can fail if we're not root, but we should be.
+		return "", fmt.Errorf("failed to write to parent cgroup.procs: %v", err)
+	}
+
+	// 4. Create the container's specific cgroup directory
+	if err := os.MkdirAll(cgroupPath, 0755); err != nil {
+		return "", fmt.Errorf("failed to create cgroup dir: %v", err)
+	}
+
+	// 5. Set the memory limit
 	// We write the limit in bytes to memory.max
 	memoryLimitBytes := strconv.Itoa(memoryLimitMB * 1024 * 1024)
 	limitFile := filepath.Join(cgroupPath, "memory.max")
@@ -47,7 +63,7 @@ func Setup(cgroupName string, memoryLimitMB int) (string, error) {
 
 // AddProcess adds a PID to the cgroup.
 func AddProcess(cgroupPath string, pid int) error {
-	// 3. Add our container's PID to cgroup.procs
+	// 6. Add our container's PID to cgroup.procs
 	procsFile := filepath.Join(cgroupPath, "cgroup.procs")
 	pidStr := strconv.Itoa(pid)
 	if err := os.WriteFile(procsFile, []byte(pidStr), 0644); err != nil {
