@@ -124,7 +124,7 @@ func getOrCreateBridge(name, ip string) (*netlink.Bridge, error) {
 // SetupContainerSide is called by the Child.
 // It configures the "lo" and "eth0" interfaces.
 func SetupContainerSide(peerName string) error {
-	fmt.Printf("[Container] Setting up network...\n")
+	fmt.Printf("[Container] Setting up network... ip : %s\n", containerIP)
 
 	// 1. Bring up the loopback ('lo') interface
 	// This is critical for many applications
