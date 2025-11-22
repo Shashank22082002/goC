@@ -2,6 +2,8 @@
 
 goC is a mini-container runtime written in Go from scratch.
 
+Feel free to contribute, and learn!
+
 ## Project Goal
 
 The goal of this project is not to build a production-ready container runtime, but to learn the low-level Linux mechanisms that make containers possible. We will build a tool (like runc) that can run a command in an isolated environment using namespaces, cgroups, and a root filesystem.
