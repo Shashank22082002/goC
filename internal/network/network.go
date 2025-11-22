@@ -12,10 +12,10 @@ import (
 
 const (
 	bridgeName = "goC0"
-	bridgeIP   = "10.0.0.1/24"
+	bridgeIP   = "192.168.99.1/24"
 	// We'll make these dynamic in a moment
-	containerIP = "10.0.0.2/24"
-	gatewayIP   = "10.0.0.1"
+	containerIP = "192.168.99.2/24"
+	gatewayIP   = "192.168.99.1"
 )
 
 // SetupHostSide is called by the Parent.
